@@ -1,0 +1,143 @@
+package org.kassa.cV_Heal;
+
+import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
+import org.bukkit.Sound;
+import org.bukkit.boss.BarColor;
+import org.bukkit.boss.BarStyle;
+import org.bukkit.boss.BossBar;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerItemHeldEvent;
+import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.scheduler.BukkitRunnable;
+
+import java.util.*;
+
+public final class CV_Heal extends JavaPlugin implements Listener {
+
+    private final Set<UUID> playersHealing = new HashSet<>();
+    private final Map<UUID, Long> cooldowns = new HashMap<>();
+
+    @Override
+    public void onEnable() {
+        Bukkit.getPluginManager().registerEvents(this, this);
+        getLogger().info("CV_Heal enabled.");
+    }
+
+    @EventHandler
+    public void onPlayerInteract(PlayerInteractEvent event){
+        Player player = event.getPlayer();
+        UUID playerId = player.getUniqueId();
+
+        ItemStack item = player.getInventory().getItemInMainHand();
+        ItemMeta meta = item.getItemMeta();
+        if (meta == null || !meta.hasCustomModelData()) return;
+
+        if (meta.getCustomModelData() == 10389){
+            if (playersHealing.contains(playerId)) {
+                player.sendMessage(ChatColor.RED + "Je bent al bezig met genezen!");
+                return;
+            }
+
+            if (cooldowns.containsKey(playerId) && System.currentTimeMillis() < cooldowns.get(playerId)) {
+                player.sendMessage(ChatColor.GRAY + "Je moet even wachten voordat je dit opnieuw kunt gebruiken!");
+                return;
+            }
+
+            if(player.getHealth() >= 10){
+                startHealingTimer(player, playerId);
+            }
+            else{
+                player.sendMessage(ChatColor.RED + "Je bent te gewond om jezelf te genezen!");
+            }
+        }
+    }
+
+    private void startHealingTimer(Player player, UUID playerId){
+        playersHealing.add(playerId);
+
+        final BossBar bossBar = Bukkit.createBossBar(ChatColor.GOLD + "Je legt verband aan...", BarColor.RED, BarStyle.SOLID);
+        bossBar.addPlayer(player);
+
+        new BukkitRunnable(){
+            double seconds = 5.0;
+
+            @Override
+            public void run(){
+                if(!playersHealing.contains(playerId)){
+                    bossBar.removeAll();
+                    cancel();
+                    return;
+                }
+
+                bossBar.setProgress(seconds / 5.0);
+
+                if(seconds <= 0.1){
+                    bossBar.removeAll();
+                    playersHealing.remove(playerId);
+
+                    if(player.getHealth() >= 10){
+                        double newHealth = Math.min(player.getHealth() + 3.0, 20.0); // Max 20 HP
+                        player.setHealth(newHealth);
+                        TakeBandage(player);
+
+                        player.sendMessage(ChatColor.GREEN + "Je bent genezen!");
+                        player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1f, 1f);
+
+                        cooldowns.put(playerId, System.currentTimeMillis() + (15 * 1000));
+                    }
+                    else{
+                        player.sendMessage(ChatColor.RED + "Je bent te gewond om jezelf te genezen!");
+                    }
+                }
+
+                seconds -= 0.1;
+            }
+        }.runTaskTimer(this, 0, 2);
+    }
+
+    private void TakeBandage(Player player){
+        for (ItemStack item : player.getInventory().getContents()) {
+            if (item != null && item.hasItemMeta()) {
+                ItemMeta meta = item.getItemMeta();
+                if (meta.hasCustomModelData() && meta.getCustomModelData() == 10369) {
+                    item.setAmount(item.getAmount() - 1);
+                    break; // Zorgt ervoor dat er maar één wordt verwijderd
+                }
+            }
+        }
+    }
+
+    @EventHandler
+    public void onHotbarScroll(PlayerItemHeldEvent event) {
+        if (playersHealing.contains(event.getPlayer().getUniqueId())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void onPlayerMove(PlayerMoveEvent event){
+        Player player = event.getPlayer();
+        UUID playerId = player.getUniqueId();
+
+        if (playersHealing.contains(playerId)) {
+            double deltaX = event.getTo().getX() - event.getFrom().getX();
+            double deltaY = event.getTo().getY() - event.getFrom().getY();
+            double deltaZ = event.getTo().getZ() - event.getFrom().getZ();
+            double distanceSquared = deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ;
+
+            double threshold = 0.01;
+
+            if (distanceSquared > threshold) {
+                playersHealing.remove(playerId);
+                player.sendMessage(ChatColor.RED + "Je kunt niet bewegen tijdens het aanleggen van verband!");
+            }
+        }
+    }
+}
