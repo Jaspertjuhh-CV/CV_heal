@@ -28,6 +28,17 @@ public final class CV_Heal extends JavaPlugin implements Listener {
     public void onEnable() {
         Bukkit.getPluginManager().registerEvents(this, this);
         getLogger().info("CV_Heal enabled.");
+
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                for (Player player : Bukkit.getOnlinePlayers()) {
+                    if (isInventoryFull(player)) {
+                        player.sendMessage(ChatColor.RED + "Let op: je inventory zit helemaal vol!");
+                    }
+                }
+            }
+        }.runTaskTimer(this, 0L, 100L); // Elke 5 seconden (100 ticks)
     }
 
     @EventHandler
@@ -139,5 +150,14 @@ public final class CV_Heal extends JavaPlugin implements Listener {
                 player.sendMessage(ChatColor.RED + "Je kunt niet bewegen tijdens het aanleggen van verband!");
             }
         }
+    }
+
+    public boolean isInventoryFull(Player player) {
+        for (ItemStack item : player.getInventory().getStorageContents()) {
+            if (item == null || item.getType().isAir()) {
+                return false;
+            }
+        }
+        return true;
     }
 }
